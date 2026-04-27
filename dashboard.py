@@ -35,6 +35,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s | %(mes
 
 DEFAULT_START = date.today() - timedelta(days=45)
 ALLOCATION_KEYS = ("alloc_USD", "alloc_EUR", "alloc_HUF")
+ALLOCATION_TARGET_PCT = 100.0
+ALLOCATION_EPSILON = 1e-9
+SUBMIT_GUARD_EPSILON = 1e-5
 
 try:
     import kaleido  # noqa: F401  -- detection only, used implicitly by plotly
@@ -170,21 +173,23 @@ def _render_kpis(initial: float, metrics: dict) -> None:
 
     row2 = st.columns(4)
     best_value = metrics["best_day_value"]
-    best_date = metrics["best_day"].strftime("%Y-%m-%d") if metrics["best_day"] is not None else None
+    best_day = metrics["best_day"]
+    best_date = best_day.strftime("%Y-%m-%d") if best_day is not None else None
     _kpi_tile(
         row2[0],
         "Best day",
-        f"{best_value:+,.2f} PLN" if metrics["best_day"] is not None else "—",
+        f"{best_value:+,.2f} PLN" if best_day is not None else "—",
         color_class=_signed_color(best_value),
         sub=best_date,
     )
 
     worst_value = metrics["worst_day_value"]
-    worst_date = metrics["worst_day"].strftime("%Y-%m-%d") if metrics["worst_day"] is not None else None
+    worst_day = metrics["worst_day"]
+    worst_date = worst_day.strftime("%Y-%m-%d") if worst_day is not None else None
     _kpi_tile(
         row2[1],
         "Worst day",
-        f"{worst_value:+,.2f} PLN" if metrics["worst_day"] is not None else "—",
+        f"{worst_value:+,.2f} PLN" if worst_day is not None else "—",
         color_class=_signed_color(worst_value),
         sub=worst_date,
     )
@@ -233,7 +238,7 @@ PRESETS: dict[str, tuple[float, float, float]] = {
 
 
 def _apply_preset(values: tuple[float, float, float]) -> None:
-    for key, value in zip(ALLOCATION_KEYS, values):
+    for key, value in zip(ALLOCATION_KEYS, values, strict=True):
         st.session_state[key] = float(value)
 
 
@@ -263,7 +268,7 @@ def _render_allocation_inputs() -> dict[str, float]:
     preset_top = st.sidebar.columns(2)
     preset_bottom = st.sidebar.columns(2)
     preset_slots = [*preset_top, *preset_bottom]
-    for slot, (label, weights) in zip(preset_slots, PRESETS.items()):
+    for slot, (label, weights) in zip(preset_slots, PRESETS.items(), strict=True):
         slot.button(
             label,
             use_container_width=True,
@@ -288,11 +293,11 @@ def _render_allocation_inputs() -> dict[str, float]:
     st.sidebar.button(
         "Normalize to 100%",
         use_container_width=True,
-        disabled=(abs(total - 100) < 1e-9 or total == 0),
+        disabled=(abs(total - ALLOCATION_TARGET_PCT) < ALLOCATION_EPSILON or total == 0),
         on_click=_normalize_to_100,
     )
 
-    if abs(total - 100) < 1e-9:
+    if abs(total - ALLOCATION_TARGET_PCT) < ALLOCATION_EPSILON:
         st.sidebar.markdown(
             "<div class='alloc-residual'>Total <strong>100.00%</strong> — fully allocated.</div>",
             unsafe_allow_html=True,
@@ -317,7 +322,7 @@ def _render_sidebar() -> tuple[float, date, dict[str, float], int, bool]:
 
     percentages = _render_allocation_inputs()
     alloc_total = round(sum(percentages.values()), 2)
-    alloc_valid = abs(alloc_total - 100.0) < 1e-9
+    alloc_valid = abs(alloc_total - ALLOCATION_TARGET_PCT) < ALLOCATION_EPSILON
 
     # Hardlock: don't let the user run a misweighted basket. This mirrors the
     # commit-disabled-until-balanced pattern from Aladdin / Bloomberg AIM.
@@ -396,6 +401,47 @@ def _plot(fig) -> None:
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 
+def _render_charts(
+    valuations: pd.DataFrame,
+    metrics: dict,
+    allocation: Allocation,
+    amount: float,
+    days: int,
+) -> None:
+    st.divider()
+    st.subheader("Portfolio trajectory")
+    _plot(total_value_chart(valuations, amount))
+
+    left, right = st.columns(2, gap="medium")
+    with left:
+        _plot(daily_change_chart(valuations))
+    with right:
+        _plot(drawdown_chart(valuations))
+
+    st.divider()
+    st.subheader("Risk and return attribution")
+    risk_col, attribution_col = st.columns(2, gap="medium")
+    with risk_col:
+        _plot(
+            returns_distribution_chart(
+                valuations, metrics["var_95_pln"], metrics["cvar_95_pln"]
+            )
+        )
+    with attribution_col:
+        _plot(return_attribution_chart(valuations, allocation))
+
+    st.divider()
+    st.subheader("Allocation snapshots")
+    pie_left, pie_right = st.columns(2, gap="medium")
+    codes = list(allocation.codes)
+    initial_values = [amount * allocation.weights[code] for code in codes]
+    final_values = [valuations[f"value_{code}"].iloc[-1] for code in codes]
+    with pie_left:
+        _plot(allocation_pie_chart(codes, initial_values, "Allocation · day 1"))
+    with pie_right:
+        _plot(allocation_pie_chart(codes, final_values, f"Allocation · day {days}"))
+
+
 def main() -> None:
     st.set_page_config(
         page_title="NBP Currency Basket Simulator",
@@ -416,7 +462,7 @@ def main() -> None:
         st.info("Set the parameters in the sidebar and press **Run simulation**.")
         return
 
-    if abs(sum(percentages.values()) - 100.0) > 1e-5:
+    if abs(sum(percentages.values()) - ALLOCATION_TARGET_PCT) > SUBMIT_GUARD_EPSILON:
         st.error(
             "Currency split must sum to exactly 100%. Adjust the weights in the sidebar "
             "or click **Normalize to 100%**."
@@ -450,38 +496,7 @@ def main() -> None:
     _render_kpis(amount, metrics)
     st.caption(f"Audit record: `{Path(audit_path).name}`")
 
-    st.divider()
-    st.subheader("Portfolio trajectory")
-    _plot(total_value_chart(valuations, amount))
-
-    left, right = st.columns(2, gap="medium")
-    with left:
-        _plot(daily_change_chart(valuations))
-    with right:
-        _plot(drawdown_chart(valuations))
-
-    st.divider()
-    st.subheader("Risk and return attribution")
-    risk_col, attribution_col = st.columns(2, gap="medium")
-    with risk_col:
-        _plot(
-            returns_distribution_chart(
-                valuations, metrics["var_95_pln"], metrics["cvar_95_pln"]
-            )
-        )
-    with attribution_col:
-        _plot(return_attribution_chart(valuations, allocation))
-
-    st.divider()
-    st.subheader("Allocation snapshots")
-    pie_left, pie_right = st.columns(2, gap="medium")
-    codes = list(allocation.codes)
-    initial_values = [amount * allocation.weights[code] for code in codes]
-    final_values = [valuations[f"value_{code}"].iloc[-1] for code in codes]
-    with pie_left:
-        _plot(allocation_pie_chart(codes, initial_values, "Allocation · day 1"))
-    with pie_right:
-        _plot(allocation_pie_chart(codes, final_values, f"Allocation · day {days}"))
+    _render_charts(valuations, metrics, allocation, amount, days)
 
     st.divider()
     st.subheader("Export")

@@ -20,8 +20,8 @@ log = logging.getLogger("portfolio_sim")
 def _parse_allocation(raw: str) -> Allocation:
     """Parse a CLI allocation string like 'USD:30,EUR:40,HUF:30' into an Allocation."""
     percentages: dict[str, float] = {}
-    for token in raw.split(","):
-        token = token.strip()
+    for raw_token in raw.split(","):
+        token = raw_token.strip()
         if not token:
             continue
         if ":" not in token:
@@ -54,7 +54,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "Produces a single-page report and an auditable JSON run record."
         ),
     )
-    parser.add_argument("--amount", type=float, default=1000.0, help="Initial PLN amount (default: 1000).")
+    parser.add_argument(
+        "--amount", type=float, default=1000.0, help="Initial PLN amount (default: 1000)."
+    )
     parser.add_argument(
         "--start",
         type=_parse_date,

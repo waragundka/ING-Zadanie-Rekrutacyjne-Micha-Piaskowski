@@ -1,6 +1,8 @@
 """Plotly figure builders — dark theme tuned for the simulator dashboard."""
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -31,11 +33,11 @@ _PALETTE = [
 PLN_HOVER = "<b>%{x|%Y-%m-%d}</b><br>%{y:,.2f} PLN<extra></extra>"
 PCT_HOVER = "<b>%{x|%Y-%m-%d}</b><br>%{y:.2f}%<extra></extra>"
 
-_FONT = dict(
-    family='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    size=12,
-    color=TEXT,
+_FONT_FAMILY = (
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, '
+    '"Helvetica Neue", Arial, sans-serif'
 )
+_FONT = dict(family=_FONT_FAMILY, size=12, color=TEXT)
 
 _TITLE_STYLE = dict(
     font=dict(size=14, color=TEXT),
@@ -70,7 +72,7 @@ _RANGESLIDER = dict(
 )
 
 
-def _time_axis_with_slider() -> dict:
+def _time_axis_with_slider() -> dict[str, Any]:
     return {**_TIME_AXIS, "rangeslider": _RANGESLIDER}
 
 _VALUE_AXIS = dict(
@@ -97,7 +99,7 @@ _BASE_LAYOUT = dict(
 )
 
 
-def _axis_title(text: str) -> dict:
+def _axis_title(text: str) -> dict[str, Any]:
     """Explicit titles disable Plotly's editable-mode placeholder ('Click to enter…')."""
     return dict(text=text, font=dict(color=MUTED_TEXT, size=12), standoff=14)
 

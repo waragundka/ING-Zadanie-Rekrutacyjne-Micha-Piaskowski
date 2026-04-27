@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 from portfolio_sim.metrics import PortfolioMetrics
 from portfolio_sim.portfolio import SimulationResult
 from portfolio_sim.visualizer import (
+    _PALETTE,
     BG,
     GAIN,
     GRID,
@@ -19,7 +20,6 @@ from portfolio_sim.visualizer import (
     NEUTRAL_LINE,
     PANEL_BG,
     TEXT,
-    _PALETTE,
 )
 
 log = logging.getLogger(__name__)

@@ -12,6 +12,8 @@ from urllib3.util.retry import Retry
 
 log = logging.getLogger(__name__)
 
+HTTP_NOT_FOUND = 404
+
 
 class NBPAPIError(RuntimeError):
     """Raised when the NBP API cannot satisfy a rate request."""
@@ -80,7 +82,7 @@ class NBPClient:
         except requests.RequestException as exc:
             raise NBPAPIError(f"Network error fetching {code} rates: {exc}") from exc
 
-        if response.status_code == 404:
+        if response.status_code == HTTP_NOT_FOUND:
             raise NBPAPIError(
                 f"NBP returned 404 for {code} between {window_start} and {end} — "
                 "no published quotes in that window."
