@@ -1,0 +1,32 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Build artefacts
+build/
+dist/
+
+# Generated reports
+portfolio_report.*
+*.png
+*.pdf
+*.svg
+*.html
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

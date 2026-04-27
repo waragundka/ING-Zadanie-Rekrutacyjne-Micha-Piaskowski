@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portfolio-sim"
+version = "1.0.0"
+description = "NBP-based currency basket investment simulator (ING recruitment task)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "requests>=2.31",
+    "plotly>=5.18",
+    "streamlit>=1.30",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+report = ["kaleido>=0.2.1"]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.1.9",
+    "mypy>=1.7",
+    "types-requests",
+]
+
+[project.scripts]
+portfolio-sim = "portfolio_sim.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["portfolio_sim*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RET", "ARG", "PL"]
+ignore = ["PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+files = ["portfolio_sim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::DeprecationWarning"]
