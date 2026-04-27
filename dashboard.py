@@ -21,6 +21,7 @@ from portfolio_sim import (
     compute_metrics,
     record_run,
 )
+from portfolio_sim.report import build_one_pager
 from portfolio_sim.visualizer import (
     allocation_pie_chart,
     daily_change_chart,
@@ -98,14 +99,15 @@ def _run_cached(
     weights_items: tuple[tuple[str, float], ...],
     start: date,
     days: int,
-) -> tuple[pd.DataFrame, dict, str]:
+) -> tuple[pd.DataFrame, dict, str, bytes]:
     """NBP history is immutable past today, so identical inputs reuse results."""
     allocation = Allocation(weights=dict(weights_items))
     simulator = PortfolioSimulator(NBPClient())
     result = simulator.run(amount=amount, allocation=allocation, start=start, holding_days=days)
     metrics = compute_metrics(result.valuations, result.initial_amount)
     audit_path = record_run(result, metrics)
-    return result.valuations, asdict(metrics), str(audit_path)
+    one_pager_html = build_one_pager(result, metrics).to_html(include_plotlyjs="cdn").encode("utf-8")
+    return result.valuations, asdict(metrics), str(audit_path), one_pager_html
 
 
 def _signed_color(value: float | None) -> str:
@@ -330,11 +332,13 @@ def _build_excel_bytes(valuations: pd.DataFrame, metrics: dict) -> bytes:
     return buffer.getvalue()
 
 
-def _render_downloads(valuations: pd.DataFrame, metrics: dict, start: date) -> None:
+def _render_downloads(
+    valuations: pd.DataFrame, metrics: dict, start: date, one_pager_html: bytes
+) -> None:
     csv_bytes = valuations.to_csv().encode("utf-8")
     excel_bytes = _build_excel_bytes(valuations, metrics)
 
-    cols = st.columns([1, 1, 1, 3])
+    cols = st.columns([1, 1, 1, 2])
     cols[0].download_button(
         "Download CSV",
         data=csv_bytes,
@@ -348,6 +352,14 @@ def _render_downloads(valuations: pd.DataFrame, metrics: dict, start: date) -> N
         file_name=f"portfolio_{start.isoformat()}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
+    )
+    cols[2].download_button(
+        "Download report (HTML)",
+        data=one_pager_html,
+        file_name=f"portfolio_report_{start.isoformat()}.html",
+        mime="text/html",
+        use_container_width=True,
+        help="Single-page summary — opens in any browser, prints cleanly to PDF.",
     )
 
 
@@ -391,7 +403,9 @@ def main() -> None:
     weights_items = tuple(allocation.weights.items())
     try:
         with st.spinner("Fetching NBP rates and pricing the basket..."):
-            valuations, metrics, audit_path = _run_cached(amount, weights_items, start, days)
+            valuations, metrics, audit_path, one_pager_html = _run_cached(
+                amount, weights_items, start, days
+            )
     except NBPAPIError as exc:
         st.error(f"NBP API error: {exc}")
         return
@@ -437,8 +451,8 @@ def main() -> None:
         _plot(allocation_pie_chart(codes, final_values, f"Allocation · day {days}"))
 
     st.divider()
-    st.subheader("Export raw data")
-    _render_downloads(valuations, metrics, start)
+    st.subheader("Export")
+    _render_downloads(valuations, metrics, start, one_pager_html)
 
     with st.expander("Raw valuation table"):
         st.dataframe(valuations.round(4), use_container_width=True)
