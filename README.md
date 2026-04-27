@@ -71,7 +71,7 @@ dashboard.py          # warstwa Streamlit
 main.py               # wrapper uruchamiający dashboard
 Dockerfile            # obraz produkcyjny (non-root, healthcheck)
 runs/                 # audit-trail JSON (tworzone przy uruchomieniu)
-tests/                # 51 testów jednostkowych (97% coverage)
+tests/                # 60 testów jednostkowych (96% coverage)
 ```
 
 Pipeline jest świadomie podzielony na cztery niezależne kroki w `PortfolioSimulator`:
@@ -97,7 +97,7 @@ Dodatkowo:
 
 - **Waterfall attribution** — pokazuje wkład każdej waluty w łączny P&L portfela
 - **Donut** z 55% otworem i białymi separatorami — czytelny rozkład alokacji na dzień 1 i N
-- **Download CSV / Excel** w UI — surowe dane dla zespołu reportowego
+- **Download CSV / Excel / raport HTML** w UI — dane surowe oraz jednostronicowy raport do przesłania mailem (z `kaleido` dochodzi też przycisk PDF)
 
 ## Decyzje projektowe
 
@@ -137,20 +137,20 @@ Sharpe i Sortino świadomie **nie są annualizowane** — okno 30-dniowe jest zb
 
 ## Testy
 
-58 testów jednostkowych pokrywających 96% kodu pakietu:
+60 testów jednostkowych pokrywających 96% kodu pakietu:
 
 - walidację `Allocation` (suma, ujemne wagi, niepoprawne kody, `FrozenInstanceError`)
 - klienta NBP (parsing JSON, retry/timeout, błędy 404/sieć/pusty payload, walidacja okna)
 - pipeline portfela (forward-fill weekendów, poprawność wyceny, drawdown, NaN w dniu 1)
 - KPI (drawdown, volatility nieannualizowana, best/worst day pomijające dzień 1)
 - audit trail (deterministyczny hash, JSON well-formed, tworzenie zagnieżdżonych katalogów)
-- buildery wykresów Plotly (struktura figur, liczba traces, anotacje best/worst)
+- buildery wykresów Plotly (struktura figur, liczba traces, annotacje best/worst)
 - raport jednostronicowy (4 panele 2×2, eksport HTML, tworzenie katalogów)
 - CLI (full pipeline z stub NBP, exit codes na błędach, parsery argumentów)
 
 ```bash
 $ make test
-============================== 58 passed in 0.32s ==============================
+============================== 60 passed in 0.32s ==============================
 ```
 
 ## CI
