@@ -36,6 +36,12 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s | %(mes
 DEFAULT_START = date.today() - timedelta(days=45)
 ALLOCATION_KEYS = ("alloc_USD", "alloc_EUR", "alloc_HUF")
 
+try:
+    import kaleido  # noqa: F401  -- detection only, used implicitly by plotly
+    _PDF_EXPORT_AVAILABLE = True
+except ImportError:
+    _PDF_EXPORT_AVAILABLE = False
+
 PAGE_STYLE = """
     <style>
         #MainMenu, footer, header, .stDeployButton { visibility: hidden; display: none; }
@@ -99,15 +105,23 @@ def _run_cached(
     weights_items: tuple[tuple[str, float], ...],
     start: date,
     days: int,
-) -> tuple[pd.DataFrame, dict, str, bytes]:
+) -> tuple[pd.DataFrame, dict, str, bytes, bytes | None]:
     """NBP history is immutable past today, so identical inputs reuse results."""
     allocation = Allocation(weights=dict(weights_items))
     simulator = PortfolioSimulator(NBPClient())
     result = simulator.run(amount=amount, allocation=allocation, start=start, holding_days=days)
     metrics = compute_metrics(result.valuations, result.initial_amount)
     audit_path = record_run(result, metrics)
-    one_pager_html = build_one_pager(result, metrics).to_html(include_plotlyjs="cdn").encode("utf-8")
-    return result.valuations, asdict(metrics), str(audit_path), one_pager_html
+
+    fig = build_one_pager(result, metrics)
+    one_pager_html = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+    one_pager_pdf: bytes | None = None
+    if _PDF_EXPORT_AVAILABLE:
+        try:
+            one_pager_pdf = fig.to_image(format="pdf")
+        except Exception as exc:  # kaleido import OK but rendering failed
+            logging.getLogger(__name__).warning("PDF export failed: %s", exc)
+    return result.valuations, asdict(metrics), str(audit_path), one_pager_html, one_pager_pdf
 
 
 def _signed_color(value: float | None) -> str:
@@ -333,12 +347,18 @@ def _build_excel_bytes(valuations: pd.DataFrame, metrics: dict) -> bytes:
 
 
 def _render_downloads(
-    valuations: pd.DataFrame, metrics: dict, start: date, one_pager_html: bytes
+    valuations: pd.DataFrame,
+    metrics: dict,
+    start: date,
+    one_pager_html: bytes,
+    one_pager_pdf: bytes | None,
 ) -> None:
     csv_bytes = valuations.to_csv().encode("utf-8")
     excel_bytes = _build_excel_bytes(valuations, metrics)
 
-    cols = st.columns([1, 1, 1, 2])
+    # 4 buttons when PDF export is wired up, 3 otherwise — keep equal width.
+    column_count = 5 if one_pager_pdf is not None else 4
+    cols = st.columns([1] * (column_count - 1) + [2])
     cols[0].download_button(
         "Download CSV",
         data=csv_bytes,
@@ -361,6 +381,15 @@ def _render_downloads(
         use_container_width=True,
         help="Single-page summary — opens in any browser, prints cleanly to PDF.",
     )
+    if one_pager_pdf is not None:
+        cols[3].download_button(
+            "Download report (PDF)",
+            data=one_pager_pdf,
+            file_name=f"portfolio_report_{start.isoformat()}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            help="Static one-pager rendered with kaleido.",
+        )
 
 
 def _plot(fig) -> None:
@@ -403,9 +432,13 @@ def main() -> None:
     weights_items = tuple(allocation.weights.items())
     try:
         with st.spinner("Fetching NBP rates and pricing the basket..."):
-            valuations, metrics, audit_path, one_pager_html = _run_cached(
-                amount, weights_items, start, days
-            )
+            (
+                valuations,
+                metrics,
+                audit_path,
+                one_pager_html,
+                one_pager_pdf,
+            ) = _run_cached(amount, weights_items, start, days)
     except NBPAPIError as exc:
         st.error(f"NBP API error: {exc}")
         return
@@ -452,7 +485,7 @@ def main() -> None:
 
     st.divider()
     st.subheader("Export")
-    _render_downloads(valuations, metrics, start, one_pager_html)
+    _render_downloads(valuations, metrics, start, one_pager_html, one_pager_pdf)
 
     with st.expander("Raw valuation table"):
         st.dataframe(valuations.round(4), use_container_width=True)
